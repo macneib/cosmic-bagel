@@ -1,0 +1,111 @@
+version: '2'
+services:
+  zookeeper:
+    image: debezium/zookeeper:${DEBEZIUM_VERSION}
+    ports:
+     - 2181:2181
+     - 2888:2888
+     - 3888:3888
+  kafka:
+    image: debezium/kafka:${DEBEZIUM_VERSION}
+    ports:
+     - 9092:9092
+    links:
+     - zookeeper
+    environment:
+     - ZOOKEEPER_CONNECT=zookeeper:2181
+  # mysql:
+  #   image: debezium/example-mysql:${DEBEZIUM_VERSION}
+  #   ports:
+  #    - 3306:3306
+  #   environment:
+  #    - MYSQL_ROOT_PASSWORD=debezium
+  #    - MYSQL_USER=mysqluser
+  #    - MYSQL_PASSWORD=mysqlpw 
+  mssql:
+    image: microsoft/mssql-server-linux:2017-CU9-GDR2
+    ports:
+     - 1433:1433
+    environment:
+     - ACCEPT_EULA=Y
+     - MSSQL_PID=Standard
+     - SA_PASSWORD=Password!
+     - MSSQL_AGENT_ENABLED=true
+  postgres:
+    image: debezium/postgres:9.6
+    ports:
+     - "5432:5432"
+    environment:
+     - POSTGRES_USER=postgresuser
+     - POSTGRES_PASSWORD=postgrespw
+     - POSTGRES_DB=inventory
+  # elastic:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:7.1.0
+  #   ports:
+  #    - "9200:9200"  
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.8.1
+    environment:
+     - bootstrap.memory_lock=true
+     - ELASTIC_PASSWORD=changeme
+     - discovery.type=single-node
+     - http.host=0.0.0.0
+     - transport.host=127.0.0.1
+     - cluster.routing.allocation.disk.threshold_enabled=false
+     - xpack.security.enabled=false
+     - xpack.ml.enabled=false
+     - xpack.watcher.enabled=false
+     - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9200
+  kibana:
+    image: docker.elastic.co/kibana/kibana:6.8.1
+    ports:
+      - "5601:5601"
+    environment:
+     - http.host=0.0.0.0
+     - transport.host=127.0.0.1
+     - xpack.security.enabled=false
+    depends_on:
+     - elasticsearch
+    links:
+     - elasticsearch
+  connect:
+    image: debezium/connect-jdbc-es:${DEBEZIUM_VERSION}
+    build:
+      context: debezium-jdbc-es
+    ports:
+     - 8083:8083
+     - 5005:5005
+    links:
+     - kafka
+     - mssql
+     - postgres
+     - elasticsearch
+    environment:
+     - BOOTSTRAP_SERVERS=kafka:9092
+     - GROUP_ID=1
+     - CONFIG_STORAGE_TOPIC=my_connect_configs
+     - OFFSET_STORAGE_TOPIC=my_connect_offsets
+  adminer:
+    image: adminer:sqlserver
+    restart: always
+    ports:
+      - 8081:8080
+    links:
+     - mssql
+     - postgres
+  kafka-connect-ui:
+    image: landoop/kafka-connect-ui:0.9.4
+    hostname: kafka-connect-ui
+    ports:
+      - "8003:8000"
+    environment:
+      CONNECT_URL: "http://connect:8083/"
+      PROXY: "true"
+    depends_on:
+      - connect
